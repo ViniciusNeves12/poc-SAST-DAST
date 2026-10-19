@@ -1,0 +1,79 @@
+name: security-poc
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sast:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    container: semgrep/semgrep
+    permissions:
+      contents: read
+      security-events: write          # necessario apenas para enviar o SARIF ao Code Scanning
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Semgrep scan (modo report-only)
+        run: |
+          semgrep scan \
+            --config p/javascript \
+            --config p/owasp-top-ten \
+            --config p/secrets \
+            --config p/security-audit \
+            --config p/sql-injection \
+            --config p/command-injection \
+            --json-output=semgrep.json \
+            --sarif-output=semgrep.sarif
+
+      - name: Enviar resultados ao Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-report
+          path: |
+            semgrep.json
+            semgrep.sarif
+
+  dast:
+    name: DAST (OWASP ZAP)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Subir a aplicacao no runner
+        working-directory: app
+        run: |
+          npm install
+          nohup node server.js > app.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/health && break
+            sleep 1
+          done
+      - name: ZAP full scan (spider + ataque ativo)
+        run: |
+          mkdir -p zap && chmod 777 zap
+          docker run --rm --network host \
+            -v "$PWD/zap:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-full-scan.py -t http://localhost:3000 \
+              -x zap-report.xml -r zap-report.html -I
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-report
+          path: zap/

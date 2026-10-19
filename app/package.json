@@ -1,0 +1,13 @@
+{
+  "name": "poc-app-vulneravel",
+  "version": "1.0.0",
+  "description": "Aplicacao PROPOSITALMENTE vulneravel para POC de SAST/DAST. Nao publicar.",
+  "main": "server.js",
+  "private": true,
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=22.13" },
+  "dependencies": {
+    "express": "4.21.2",
+    "jsonwebtoken": "9.0.2"
+  }
+}
